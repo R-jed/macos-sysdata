@@ -15,11 +15,10 @@ struct SnapshotProbe: StorageProbe {
             .count
         guard count > 0 else { return [] }
 
-        let name = "\(count) local snapshot\(count == 1 ? "" : "s")"
         return [StorageItem(
             id: "snapshots",
             category: .snapshots,
-            name: name,
+            name: "\(count) local snapshot\(count == 1 ? "" : "s")",
             detail: "Hidden APFS snapshots kept between Time Machine runs. Size is not reported by APFS; the next backup recreates one.",
             sizeBytes: nil,
             safety: .safe,
@@ -51,13 +50,11 @@ struct SimulatorProbe: StorageProbe {
                     let runtimeName = runtime.replacingOccurrences(of: "com.apple.CoreSimulator.SimRuntime.", with: "")
 
                     if !available {
-                        let rawName = "Unavailable: \(name)"
-                        let rawDetail = "Its runtime (\(runtimeName)) is no longer installed, so this device can never boot."
                         items.append(StorageItem(
                             id: "sim-unavailable-\(udid)",
                             category: .simulators,
-                            name: rawName,
-                            detail: rawDetail,
+                            name: "Unavailable: \(name)",
+                            detail: "Its runtime (\(runtimeName)) is no longer installed, so this device can never boot.",
                             sizeBytes: dataSize,
                             safety: .safe,
                             action: .command(executable: xcrun, arguments: ["simctl", "delete", udid]),
@@ -73,13 +70,11 @@ struct SimulatorProbe: StorageProbe {
                     cacheDirectories += [data.appending(path: "Library/Caches"), data.appending(path: "tmp")]
                         .filter(\.exists)
 
-                    let rawName = "Erase \(name)"
-                    let rawDetail = "Resets this \(runtimeName) simulator to factory state. Installed apps and their data are lost."
                     items.append(StorageItem(
                         id: "sim-erase-\(udid)",
                         category: .simulators,
-                        name: rawName,
-                        detail: rawDetail,
+                        name: "Erase \(name)",
+                        detail: "Resets this \(runtimeName) simulator to factory state. Installed apps and their data are lost.",
                         sizeBytes: dataSize,
                         safety: .review,
                         action: .steps([.shutdownSimulators, .command(executable: xcrun, arguments: ["simctl", "erase", udid])]),
@@ -98,11 +93,10 @@ struct SimulatorProbe: StorageProbe {
             var total: Int64 = 0
             for directory in cacheDirectories { total += await DiskSize.allocated(at: directory) }
             if total > 0 {
-                let rawName = "Device caches (\(deviceCount) devices)"
                 items.insert(StorageItem(
                     id: "sim-caches",
                     category: .simulators,
-                    name: rawName,
+                    name: "Device caches (\(deviceCount) devices)",
                     detail: "Per-device Caches and tmp plus the shared dyld cache. Rebuilt on the next boot.",
                     sizeBytes: total,
                     safety: .safe,
@@ -153,7 +147,7 @@ struct RuntimeProbe: StorageProbe {
             // build touches nothing the way running a simulator does.
             let lastUsedAt = (runtime["lastUsedAt"] as? String).flatMap(Self.parseTimestamp)
             let lastUsed = (runtime["lastUsedAt"] as? String).map { "Last used \($0.prefix(10)). " } ?? ""
-            let localizedLastUsed = (runtime["lastUsedAt"] as? String)
+            let displayLastUsed = (runtime["lastUsedAt"] as? String)
                 .map { L("Last used %@. ", String($0.prefix(10))) } ?? ""
 
             return StorageItem(
@@ -166,7 +160,7 @@ struct RuntimeProbe: StorageProbe {
                 action: .command(executable: xcrun, arguments: ["simctl", "runtime", "delete", identifier]),
                 revealURL: (runtime["path"] as? String).map { URL(fileURLWithPath: $0) },
                 lastModified: lastUsedAt,
-                displayDetail: localizedLastUsed + LS("Simulators on this runtime stop working. Xcode > Settings > Components downloads it again.")
+                displayDetail: displayLastUsed + LS("Simulators on this runtime stop working. Xcode > Settings > Components downloads it again.")
             )
         }
         .sorted { ($0.sizeBytes ?? 0) > ($1.sizeBytes ?? 0) }
@@ -232,12 +226,10 @@ struct XcodeProbe: StorageProbe {
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         for app in URL(fileURLWithPath: "/Applications").children()
         where app.lastPathComponent.hasPrefix("Xcode") && app.pathExtension == "app" && !active.hasPrefix(app.path) {
-            let rawName = "Inactive \(app.lastPathComponent)"
-            let rawDetail = "Not the selected developer directory (\(active))."
             if let item = await ProbeSupport.directoryItem(
                 id: "xcode-app-\(app.lastPathComponent)", category: .xcode,
-                name: rawName,
-                detail: rawDetail,
+                name: "Inactive \(app.lastPathComponent)",
+                detail: "Not the selected developer directory (\(active)).",
                 url: app, safety: .review, action: .removePaths([app]),
                 displayName: L("Inactive %@", app.lastPathComponent),
                 displayDetail: L("Not the selected developer directory (%@).", active)
