@@ -116,7 +116,7 @@ struct HistoryPanel: View {
     private func row(_ title: String, detail: String, trailing: String, tint: Color) -> some View {
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).lineLimit(1)
+                Text(LS(title)).lineLimit(1)
                 Text(detail)
                     .font(.caption)
                     .foregroundStyle(.secondary)
