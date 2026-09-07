@@ -145,8 +145,8 @@ enum ReclaimAction: Sendable {
 struct StorageItem: Identifiable, Sendable {
     let id: String
     let category: StorageCategory
-    let name: String
-    let detail: String
+    let rawName: String
+    let rawDetail: String
     /// `nil` when the size cannot be measured (APFS snapshots).
     let sizeBytes: Int64?
     let safety: Safety
@@ -178,8 +178,8 @@ struct StorageItem: Identifiable, Sendable {
     ) {
         self.id = id
         self.category = category
-        self.name = name
-        self.detail = detail
+        self.rawName = name
+        self.rawDetail = detail
         self.sizeBytes = sizeBytes
         self.safety = safety
         self.action = action
@@ -190,10 +190,12 @@ struct StorageItem: Identifiable, Sendable {
         self.displayDetailOverride = displayDetail
     }
 
-    /// Localized text for the UI. The raw English fields stay stable for
-    /// `--json`, history records and callers that treat them as data.
-    var displayName: String { displayNameOverride ?? LS(name) }
-    var displayDetail: String { displayDetailOverride ?? LS(detail) }
+    /// UI-facing text. Static probe strings are looked up at render time;
+    /// dynamic probe strings can provide a formatted override at construction.
+    var name: String { displayNameOverride ?? LS(rawName) }
+    var detail: String { displayDetailOverride ?? LS(rawDetail) }
+    var displayName: String { name }
+    var displayDetail: String { detail }
 
     /// Whole days since anything inside changed.
     var idleDays: Int? {
@@ -218,16 +220,15 @@ struct StorageItem: Identifiable, Sendable {
         action.paths + (revealURL.map { [$0] } ?? []) + alsoClaims
     }
 
-    /// Whether the filter keeps this item. The category title is matched too,
-    /// so typing "simulator" brings back the whole group rather than only the
-    /// rows that happen to repeat the word.
+    /// Whether the filter keeps this item. It accepts both the stable English
+    /// inventory text and the localized UI text, so either language works.
     func matches(filter needle: String) -> Bool {
         let needle = needle.trimmingCharacters(in: .whitespaces).lowercased()
         guard !needle.isEmpty else { return true }
-        return name.lowercased().contains(needle)
+        return rawName.lowercased().contains(needle)
+            || rawDetail.lowercased().contains(needle)
+            || name.lowercased().contains(needle)
             || detail.lowercased().contains(needle)
-            || displayName.lowercased().contains(needle)
-            || displayDetail.lowercased().contains(needle)
             || category.title.lowercased().contains(needle)
     }
 }
