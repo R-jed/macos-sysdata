@@ -35,7 +35,7 @@
 "Delete %lld items?" = "删除 %lld 项？";
 "Delete %lld selected · %@" = "删除已选 %lld 项 · %@";
 "Delete everything inside %@" = "删除%@中的所有内容";
-"Delete files older than %lld days in %@" = "删除%@中超过 %lld 天的文件";
+"Delete files older than %lld days in %@" = "删除%2$@中超过 %1$lld 天的文件";
 "Delete the history file" = "删除历史记录文件";
 "Deleted" = "已删除";
 "Deleted %@, back by %@" = "%@ 删除，%@ 又出现";
