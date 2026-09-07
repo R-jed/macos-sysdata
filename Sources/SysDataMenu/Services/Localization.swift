@@ -6,6 +6,12 @@ func L(_ key: String.LocalizationValue, _ arguments: CVarArg...) -> String {
     return arguments.isEmpty ? format : String(format: format, locale: .current, arguments: arguments)
 }
 
+/// Looks up strings that probes keep as stable English data for `--json`.
+/// The UI uses the localized value while the underlying record stays stable.
+func LS(_ key: String) -> String {
+    Bundle.resources.localizedString(forKey: key, value: key, table: nil)
+}
+
 extension Bundle {
     /// The SwiftPM resource bundle, wherever this build keeps it.
     ///
