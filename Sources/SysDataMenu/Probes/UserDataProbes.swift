@@ -18,12 +18,11 @@ struct BackupProbe: StorageProbe {
             let displayDate = (info?["Last Backup Date"] as? Date).map {
                 $0.formatted(date: .abbreviated, time: .omitted)
             } ?? LS("unknown date")
-            let rawDetail = "\(version), last backup \(date). Your only local copy of this device unless it is also in iCloud."
 
             if let item = await ProbeSupport.directoryItem(
                 id: "backup-\(backup.lastPathComponent)", category: .backups,
                 name: device,
-                detail: rawDetail,
+                detail: "\(version), last backup \(date). Your only local copy of this device unless it is also in iCloud.",
                 url: backup, safety: .review, action: .removePaths([backup]),
                 displayDetail: L("%@, last backup %@. Your only local copy of this device unless it is also in iCloud.", displayVersion, displayDate)
             ) {
@@ -43,6 +42,8 @@ struct SharedProbe: StorageProbe {
         let minimum = 20 * ProbeSupport.megabyte
 
         for entry in shared.children() where entry.isDirectory {
+            // Apps such as BlueStacks keep their virtual disks under
+            // Shared/Library/Application Support; list those individually.
             let appSupport = entry.appending(path: "Application Support")
             let candidates = entry.lastPathComponent == "Library" && appSupport.exists
                 ? appSupport.children().filter(\.isDirectory)
@@ -64,12 +65,10 @@ struct SharedProbe: StorageProbe {
         for account in URL(fileURLWithPath: "/Users").children()
         where account.isDirectory && account.lastPathComponent != currentUser && account.lastPathComponent != "Shared" {
             let size = await DiskSize.allocated(at: account)
-            let rawName = "Account: \(account.lastPathComponent)"
-            let rawDetail = size > 0 ? "Another user's home folder." : "Another user's home folder (not readable from this account)."
             items.append(StorageItem(
                 id: "shared-user-\(account.lastPathComponent)", category: .shared,
-                name: rawName,
-                detail: rawDetail,
+                name: "Account: \(account.lastPathComponent)",
+                detail: size > 0 ? "Another user's home folder." : "Another user's home folder (not readable from this account).",
                 sizeBytes: size > 0 ? size : nil, safety: .manual,
                 action: .manual("System Settings > Users & Groups > select the account > remove."),
                 revealURL: account,
@@ -117,6 +116,7 @@ struct AndroidProbe: StorageProbe {
             }
         }
 
+        // Remaining SDK components. Each is reinstallable from SDK Manager.
         let components: [(String, String)] = [
             ("platforms", "Platform"), ("build-tools", "Build tools"), ("ndk", "NDK"),
             ("cmake", "CMake"), ("sources", "Sources"),
@@ -165,10 +165,14 @@ struct AndroidProbe: StorageProbe {
 
 // MARK: - Large per-app data
 
+/// Finds the folders under ~/Library that are large enough to matter and that
+/// no other probe already covers. A few well-known heavy hitters get a proper
+/// name and instructions.
 struct AppDataProbe: StorageProbe {
     private static let threshold = 200 * ProbeSupport.megabyte
     private static let cacheThreshold = 100 * ProbeSupport.megabyte
 
+    /// Folder names other probes own, so they are not listed twice.
     private static let coveredCaches: Set<String> = [
         "Homebrew", "Yarn", "pip", "CocoaPods", "org.swift.swiftpm", "go-build", "Cypress",
         "ms-playwright", "com.apple.dt.Xcode", "Google", "Adobe", "com.apple.QuickLook.thumbnailcache",
@@ -188,31 +192,39 @@ struct AppDataProbe: StorageProbe {
             id: "app-claude-vm", category: .apps, name: "Claude local VM bundles",
             detail: "Virtual machine images used by Claude's local sandbox. Downloaded again when the feature is used.",
             url: claudeVM, safety: .review, action: .removePaths([claudeVM]), minimumBytes: Self.threshold
-        ) { items.append(item) }
+        ) {
+            items.append(item)
+        }
 
         let chromeModel = URL.home("Library/Application Support/Google/Chrome/OptGuideOnDeviceModel")
         if let item = await ProbeSupport.directoryItem(
             id: "app-chrome-model", category: .apps, name: "Chrome on-device AI model",
             detail: "Gemini Nano. Set chrome://flags/#optimization-guide-on-device-model to Disabled first, or Chrome downloads it again.",
             url: chromeModel, safety: .review, action: .removePaths([chromeModel]), minimumBytes: Self.threshold
-        ) { items.append(item) }
+        ) {
+            items.append(item)
+        }
 
         items += await scan(
             URL.home("Library/Application Support"), prefix: "app-support", label: "App data",
             detail: "Deleting resets that app.", safety: .review,
             threshold: Self.threshold, skipping: Self.coveredAppSupport
         )
+        // Reading another app's container is one TCC prompt per app. Until
+        // Full Disk Access is granted these are left alone, so the launch is
+        // one banner rather than a queue of dialogs naming Music, Photos and
+        // everything else that happens to keep a container.
         if ProbeSupport.hasFullDiskAccess {
-            items += await scan(
-                URL.home("Library/Containers"), prefix: "app-container", label: "Sandboxed app data",
-                detail: "Deleting resets that app.", safety: .review, threshold: Self.threshold,
-                skipping: Self.coveredContainers
-            )
-            items += await scan(
-                URL.home("Library/Group Containers"), prefix: "app-group", label: "App group data",
-                detail: "Shared between an app and its extensions. Deleting resets them.", safety: .review,
-                threshold: Self.threshold, skipping: []
-            )
+        items += await scan(
+            URL.home("Library/Containers"), prefix: "app-container", label: "Sandboxed app data",
+            detail: "Deleting resets that app.", safety: .review, threshold: Self.threshold,
+            skipping: Self.coveredContainers
+        )
+        items += await scan(
+            URL.home("Library/Group Containers"), prefix: "app-group", label: "App group data",
+            detail: "Shared between an app and its extensions. Deleting resets them.", safety: .review,
+            threshold: Self.threshold, skipping: []
+        )
         }
         items += await scan(
             URL.home("Library/Caches"), prefix: "app-cache", label: "Cache",
@@ -220,6 +232,8 @@ struct AppDataProbe: StorageProbe {
             threshold: Self.cacheThreshold, skipping: Self.coveredCaches
         )
 
+        // Google nests Chrome and Android Studio caches one level down; the
+        // Android probe owns the Android Studio ones.
         let googleCaches = URL.home("Library/Caches/Google")
         let androidStudio = Set(googleCaches.children().map(\.lastPathComponent).filter { $0.hasPrefix("AndroidStudio") })
         items += await scan(
@@ -252,10 +266,14 @@ struct AppDataProbe: StorageProbe {
 
 // MARK: - Project build folders
 
+/// node_modules, .build, Pods and DerivedData folders inside the usual project
+/// locations. Finder files most of their contents under System Data.
 struct ProjectProbe: StorageProbe {
     private static let roots = ["Desktop", "Documents", "Developer", "Projects", "Projeler"].map(URL.home)
     private static let targets: Set<String> = [
         "node_modules", ".build", "Pods", "DerivedData",
+        // Build output of the web frameworks, all of them rebuilt by the
+        // project's own build command and none of them worth keeping.
         ".next", ".nuxt", ".svelte-kit", ".astro", ".angular", ".turbo",
         ".parcel-cache", ".expo",
     ]
@@ -264,6 +282,10 @@ struct ProjectProbe: StorageProbe {
 
     func probe() async -> [StorageItem] {
         var found: [URL] = []
+        // Desktop and Documents are behind TCC; walking them before Full Disk
+        // Access exists asks for each one by name. The build folders under
+        // them are worth finding, but not at the price of two dialogs during
+        // the first ten seconds of the app's life.
         let readable = ProbeSupport.hasFullDiskAccess
             ? Self.roots
             : Self.roots.filter { root in
@@ -287,11 +309,10 @@ struct ProjectProbe: StorageProbe {
             case ".angular", ".turbo", ".parcel-cache", ".expo": "the next build"
             default: "the next build"
             }
-            let rawDetail = "\(project.abbreviatedPath). Recreated by \(tool)."
             if let item = await ProbeSupport.directoryItem(
                 id: "project-\(folder.path)", category: .projects,
                 name: "\(project.lastPathComponent)/\(folder.lastPathComponent)",
-                detail: rawDetail,
+                detail: "\(project.abbreviatedPath). Recreated by \(tool).",
                 url: folder, safety: .review, action: .removePaths([folder]), minimumBytes: Self.threshold,
                 displayDetail: L("%@. Recreated by %@.", project.abbreviatedPath, tool == "the next build" ? LS(tool) : tool)
             ) {
