@@ -41,8 +41,8 @@ struct InventoryRecord: Codable {
     init(_ item: StorageItem) {
         id = item.id
         category = item.category.rawValue
-        name = item.name
-        detail = item.detail
+        name = item.rawName
+        detail = item.rawDetail
         sizeBytes = item.sizeBytes
         safety = switch item.safety {
         case .safe: "safe"
