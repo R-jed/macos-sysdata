@@ -68,7 +68,7 @@ enum ScanHistory {
         for item in items {
             guard let bytes = item.sizeBytes else { continue }
             sizes[item.id] = bytes
-            names[item.id] = item.name
+            names[item.id] = item.rawName
         }
         log.scans.append(Scan(
             date: date,
@@ -85,7 +85,7 @@ enum ScanHistory {
         log.deletions.append(Deletion(
             date: date,
             itemID: item.id,
-            name: item.name,
+            name: item.rawName,
             category: item.category.rawValue,
             paths: item.action.paths.map(\.path),
             bytes: bytes
