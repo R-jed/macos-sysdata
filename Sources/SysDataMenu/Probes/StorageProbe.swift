@@ -16,7 +16,9 @@ enum ProbeSupport {
         url: URL,
         safety: Safety,
         action: ReclaimAction,
-        minimumBytes: Int64 = 1
+        minimumBytes: Int64 = 1,
+        displayName: String? = nil,
+        displayDetail: String? = nil
     ) async -> StorageItem? {
         guard url.exists else { return nil }
         let measured = await DiskSize.measure(at: url)
@@ -30,7 +32,9 @@ enum ProbeSupport {
             safety: safety,
             action: action,
             revealURL: url,
-            lastModified: measured.lastModified
+            lastModified: measured.lastModified,
+            displayName: displayName,
+            displayDetail: displayDetail
         )
     }
 
