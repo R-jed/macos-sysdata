@@ -159,6 +159,8 @@ struct StorageItem: Identifiable, Sendable {
     /// Locations this item accounts for beyond its action and reveal paths
     /// (for example the second half of the unified log store).
     let alsoClaims: [URL]
+    private let displayNameOverride: String?
+    private let displayDetailOverride: String?
 
     init(
         id: String,
@@ -170,7 +172,9 @@ struct StorageItem: Identifiable, Sendable {
         action: ReclaimAction,
         revealURL: URL? = nil,
         lastModified: Date? = nil,
-        alsoClaims: [URL] = []
+        alsoClaims: [URL] = [],
+        displayName: String? = nil,
+        displayDetail: String? = nil
     ) {
         self.id = id
         self.category = category
@@ -182,7 +186,14 @@ struct StorageItem: Identifiable, Sendable {
         self.revealURL = revealURL
         self.lastModified = lastModified
         self.alsoClaims = alsoClaims
+        self.displayNameOverride = displayName
+        self.displayDetailOverride = displayDetail
     }
+
+    /// Localized text for the UI. The raw English fields stay stable for
+    /// `--json`, history records and callers that treat them as data.
+    var displayName: String { displayNameOverride ?? LS(name) }
+    var displayDetail: String { displayDetailOverride ?? LS(detail) }
 
     /// Whole days since anything inside changed.
     var idleDays: Int? {
@@ -215,6 +226,8 @@ struct StorageItem: Identifiable, Sendable {
         guard !needle.isEmpty else { return true }
         return name.lowercased().contains(needle)
             || detail.lowercased().contains(needle)
+            || displayName.lowercased().contains(needle)
+            || displayDetail.lowercased().contains(needle)
             || category.title.lowercased().contains(needle)
     }
 }
