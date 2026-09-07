@@ -27,7 +27,7 @@ struct ItemRow: View {
                 .labelsHidden()
                 .disabled(item.action.isManual || isBusy)
                 .opacity(item.action.isManual ? 0 : 1)
-                .accessibilityLabel(L("Select %@", item.name))
+                .accessibilityLabel(L("Select %@", item.displayName))
                 .padding(.top, 2)
 
                 // Everything between the checkbox and the buttons opens the
@@ -67,7 +67,7 @@ struct ItemRow: View {
     private var details: some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 6) {
-                Text(item.name)
+                Text(item.displayName)
                     .lineLimit(1)
                 safetyBadge
             }
@@ -83,7 +83,7 @@ struct ItemRow: View {
                         .font(.caption)
                         .foregroundStyle(.tertiary)
                 }
-                Text(item.detail)
+                Text(item.displayDetail)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
@@ -244,13 +244,13 @@ struct ItemRow: View {
                     } label: {
                         Image(systemName: "folder")
                     }
-                    .accessibilityLabel(L("Reveal %@ in Finder", item.name))
+                    .accessibilityLabel(L("Reveal %@ in Finder", item.displayName))
                 }
 
                 Button(action: onHide) {
                     Image(systemName: "eye.slash")
                 }
-                .accessibilityLabel(L("Hide %@ from future scans", item.name))
+                .accessibilityLabel(L("Hide %@ from future scans", item.displayName))
                 .help(L("Don't show this item again"))
             }
             .opacity(showsSecondaryActions ? 1 : 0)
@@ -263,7 +263,7 @@ struct ItemRow: View {
                 } label: {
                     Image(systemName: "info.circle")
                 }
-                .accessibilityLabel(L("How to remove %@", item.name))
+                .accessibilityLabel(L("How to remove %@", item.displayName))
                 .popover(isPresented: $showsInstructions, arrowEdge: .trailing) {
                     instructionsPopover(instructions)
                 }
@@ -275,20 +275,21 @@ struct ItemRow: View {
                 Button(role: .destructive, action: onDelete) {
                     Image(systemName: "trash")
                 }
-                .accessibilityLabel(L("Delete %@", item.name))
+                .accessibilityLabel(L("Delete %@", item.displayName))
             }
         }
         .buttonStyle(.borderless)
     }
 
     private func instructionsPopover(_ instructions: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(item.name)
+        let displayedInstructions = LS(instructions)
+        return VStack(alignment: .leading, spacing: 8) {
+            Text(item.displayName)
                 .font(.headline)
-            Text(item.detail)
+            Text(item.displayDetail)
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            Text(instructions)
+            Text(displayedInstructions)
                 .font(.system(.caption, design: .monospaced))
                 .textSelection(.enabled)
                 .padding(8)
@@ -296,7 +297,7 @@ struct ItemRow: View {
                 .background(.quaternary, in: RoundedRectangle(cornerRadius: 6))
             Button(L("Copy")) {
                 NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(instructions, forType: .string)
+                NSPasteboard.general.setString(displayedInstructions, forType: .string)
             }
             .controlSize(.small)
         }
