@@ -2,6 +2,8 @@ import Foundation
 
 // MARK: - Virtual machines
 
+/// VM disks are the single largest files most people own and Finder files
+/// every one of them under System Data.
 struct VirtualMachineProbe: StorageProbe {
     private struct Source {
         let directory: URL
@@ -21,6 +23,10 @@ struct VirtualMachineProbe: StorageProbe {
 
     func probe() async -> [StorageItem] {
         var items: [StorageItem] = []
+        // Three of these live under ~/Documents or inside another app's
+        // container, which macOS asks about one dialog at a time. They are
+        // worth finding, but only once the single grant that covers them all
+        // exists.
         let readable = ProbeSupport.hasFullDiskAccess
             ? Self.sources
             : Self.sources.filter { source in
@@ -30,10 +36,9 @@ struct VirtualMachineProbe: StorageProbe {
             for machine in source.directory.children()
             where machine.isDirectory && (source.suffix == nil || machine.pathExtension == source.suffix) {
                 let machineName = machine.deletingPathExtension().lastPathComponent
-                let rawName = "\(source.product): \(machineName)"
                 if let item = await ProbeSupport.directoryItem(
                     id: "vm-\(machine.path)", category: .vms,
-                    name: rawName,
+                    name: "\(source.product): \(machineName)",
                     detail: "A whole virtual machine, including everything installed inside it.",
                     url: machine, safety: .review, action: .removePaths([machine]),
                     minimumBytes: 50 * ProbeSupport.megabyte,
@@ -49,6 +54,8 @@ struct VirtualMachineProbe: StorageProbe {
 
 // MARK: - Media, chat and creative app caches
 
+/// Apps that keep multi-gigabyte caches outside ~/Library/Caches, where the
+/// generic scan would only see the parent folder.
 struct AppCacheProbe: StorageProbe {
     private struct Entry {
         let id: String
@@ -106,6 +113,8 @@ struct AppCacheProbe: StorageProbe {
             }
         }
 
+        // Final Cut Pro render files live inside each library bundle, under
+        // two folders macOS keeps behind TCC.
         for root in ProbeSupport.hasFullDiskAccess ? [URL.home("Movies"), URL.home("Documents")] : [] {
             for library in root.children() where library.pathExtension == "fcpbundle" {
                 let renders = library.children().filter(\.isDirectory)
