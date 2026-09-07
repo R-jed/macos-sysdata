@@ -53,20 +53,13 @@ struct DeveloperToolProbe: StorageProbe {
         Known(".colima", "Colima virtual machine", "VM disk.", .review),
         Known(".claude", "Claude Code data", "Session transcripts, memory, plugins and caches. Deleting loses history.", .review),
         Known(".codex", "Codex CLI data", "Sessions and caches.", .review),
-        // Reported as unrecognised in issue #1. Named so the list says what
-        // made the folder, but left at Review: these hold sessions and signed-in
-        // state as often as they hold cache, and none of them is safe to delete
-        // unseen.
         Known(".grok", "Grok CLI data", "Sessions, settings and caches. Deleting loses history.", .review),
         Known(".copilot", "GitHub Copilot CLI data", "Sessions, settings and caches. Deleting signs you out.", .review),
         Known(".kilo", "Kilo Code data", "Sessions, settings and caches. Deleting loses history.", .review),
         Known(".gemini", "Gemini CLI data", "Settings and IDE support files.", .review),
-        // Same shape as the VS Code and Cursor entries above: almost all of it
-        // is installed extensions, which reinstall from the marketplace.
         Known(".antigravity-ide/extensions", "Antigravity extensions", "Installed extensions. Reinstall from the marketplace.", .review),
     ]
 
-    /// Top-level dot-folders another probe already reports.
     private static let coveredTopLevel: Set<String> = [
         ".npm", ".cargo", ".Trash", ".android", ".gradle", ".cache",
     ]
@@ -100,11 +93,13 @@ struct DeveloperToolProbe: StorageProbe {
 
         for folder in URL.home.children(includeHidden: true)
         where folder.isDirectory && folder.lastPathComponent.hasPrefix(".") && !claimedTopLevel.contains(folder.lastPathComponent) {
+            let rawName = "Hidden folder \(folder.lastPathComponent)"
             if let item = await ProbeSupport.directoryItem(
                 id: "tool-hidden-\(folder.lastPathComponent)", category: .tools,
-                name: "Hidden folder \(folder.lastPathComponent)",
+                name: rawName,
                 detail: "Not recognised by this app. Usually a tool's data or cache; check what created it.",
-                url: folder, safety: .review, action: .removePaths([folder]), minimumBytes: Self.threshold
+                url: folder, safety: .review, action: .removePaths([folder]), minimumBytes: Self.threshold,
+                displayName: L("Hidden folder %@", folder.lastPathComponent)
             ) {
                 items.append(item)
             }
@@ -112,11 +107,13 @@ struct DeveloperToolProbe: StorageProbe {
 
         for folder in URL.home(".cache").children(includeHidden: true)
         where folder.isDirectory && !claimedCache.contains(folder.lastPathComponent) {
+            let rawName = "Cache: \(folder.lastPathComponent)"
             if let item = await ProbeSupport.directoryItem(
                 id: "tool-cache-\(folder.lastPathComponent)", category: .tools,
-                name: "Cache: \(folder.lastPathComponent)",
+                name: rawName,
                 detail: "~/.cache entry. Tools rebuild their caches on demand.",
-                url: folder, safety: .safe, action: .removePaths([folder]), minimumBytes: Self.threshold
+                url: folder, safety: .safe, action: .removePaths([folder]), minimumBytes: Self.threshold,
+                displayName: L("Cache: %@", folder.lastPathComponent)
             ) {
                 items.append(item)
             }
@@ -144,16 +141,6 @@ struct LargeFolderProbe: StorageProbe {
         URL(fileURLWithPath: "/Users/Shared"),
     ]
 
-    /// Locations Finder attributes to their own category (Photos, Music,
-    /// Messages, Mail, Applications), so they are not System Data.
-    ///
-    /// Desktop, Documents and Downloads are on the list for a second reason:
-    /// Storage settings counts them as Documents, and what is in them is the
-    /// user's own work, which no delete regenerates. Listing "~/Desktop" at
-    /// 102 GB beside a Delete button is one wrong click away from a very bad
-    /// afternoon. The probes that have business there still run — build
-    /// folders, virtual machines and Final Cut render files each have their
-    /// own item, with a name that says what it is.
     private static let excluded: [URL] = [
         .home("Pictures"), .home("Music"), .home("Movies"),
         .home("Desktop"), .home("Documents"), .home("Downloads"),
@@ -166,9 +153,6 @@ struct LargeFolderProbe: StorageProbe {
 
     func probe() async -> [StorageItem] {
         let claimedPaths = claimed.map(\.standardizedFileURL.path)
-        // Without Full Disk Access the containers are added to the exclusions:
-        // descending into one asks macOS for permission by the owning app's
-        // name, and a walk of ~/Library/Containers asks about all of them.
         let excludedPaths = (Self.excluded + (ProbeSupport.hasFullDiskAccess ? [] : [
             .home("Library/Containers"), .home("Library/Group Containers"),
         ])).map(\.path)
@@ -177,13 +161,6 @@ struct LargeFolderProbe: StorageProbe {
             for root in Self.roots where root.exists {
                 group.addTask {
                     await Task.detached(priority: .utility) {
-                        // Nothing under a claimed or excluded directory can ever
-                        // be reported: `visit` returns on both before it looks at
-                        // a size. Their bytes only ever fed the totals of parents,
-                        // and a parent holding a claimed child is recursed into
-                        // rather than listed, so leaving those bytes out cannot
-                        // hide an item — a child that survives the filters is
-                        // smaller than the reduced parent total by definition.
                         let sizes = DiskSize.directorySizes(
                             under: root, maxDepth: Self.maxDepth,
                             skipping: Set(claimedPaths + excludedPaths)
@@ -210,14 +187,12 @@ struct LargeFolderProbe: StorageProbe {
         let prefix = path + "/"
 
         if excluded.contains(where: { $0 == path || prefix.hasPrefix($0 + "/") }) { return }
-        // Inside something already listed.
         if claimed.contains(where: { $0 == path || prefix.hasPrefix($0 + "/") }) { return }
 
         guard let size = sizes[path], size >= threshold else { return }
 
         let containsClaimed = claimed.contains { $0.hasPrefix(prefix) }
         if containsClaimed || url.lastPathComponent == "Library" || url.lastPathComponent == "Application Support" {
-            // Part of it is explained elsewhere; look one level deeper.
             guard depth < maxDepth else { return }
             for child in url.children(includeHidden: true) where child.isDirectory {
                 visit(child, depth: depth + 1, sizes: sizes, claimed: claimed, excluded: excluded, into: &items)
@@ -234,9 +209,6 @@ struct LargeFolderProbe: StorageProbe {
             safety: .review,
             action: .removePaths([url]),
             revealURL: url,
-            // These are the rows the person has to judge with the least help,
-            // so how long the folder has sat untouched is worth the extra
-            // stat of its top level.
             lastModified: DiskSize.shallowLastModified(at: url)
         ))
     }
