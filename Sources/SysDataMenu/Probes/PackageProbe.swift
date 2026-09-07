@@ -11,9 +11,6 @@ struct PackageProbe: StorageProbe {
         let tool: String?
         let arguments: [String]
         let detail: String
-        /// Almost every cache here is refilled on demand, so deleting one costs
-        /// a download. The exception is a store found without its tool, where
-        /// the app is inferring rather than knowing.
         var safety: Safety = .safe
     }
 
@@ -45,10 +42,6 @@ struct PackageProbe: StorageProbe {
                   tool: nil, arguments: [], detail: "Downloaded browser builds. Reinstalled by `npx playwright install`."),
         ]
 
-        // Asking pnpm is the only way to find a store in a custom location,
-        // but it is also the one case where pnpm cannot be asked: uninstalling
-        // it leaves the store on disk, and from then on nothing references it
-        // and nothing reports it.
         if let pnpm = Shell.which("pnpm") {
             if let result = try? await Shell.run(pnpm, ["store", "path"], mergeStderr: false),
                result.succeeded {
@@ -57,16 +50,7 @@ struct PackageProbe: StorageProbe {
                                     tool: "pnpm", arguments: ["store", "prune"],
                                     detail: "Unreferenced packages in the content-addressable store."))
             }
-            // pnpm is here but would not answer. Its store is wherever it was
-            // configured, and guessing a default path would be reporting a
-            // folder pnpm may not even be using.
         } else if let store = Self.defaultPnpmStore {
-            // No pnpm on the search path. That usually means it was
-            // uninstalled and its store was left behind — but it can also mean
-            // a version manager put it somewhere this app does not look, and
-            // the difference is invisible from here. So the item says what was
-            // observed rather than what it concludes, and goes to the Trash
-            // instead of being deleted outright.
             caches.append(Cache(id: "pnpm", name: "pnpm store", url: store, tool: nil, arguments: [],
                                 detail: "pnpm was not found on this Mac, so nothing appears to be using this store. If you run pnpm through a version manager, it is still in use.",
                                 safety: .review))
@@ -88,17 +72,17 @@ struct PackageProbe: StorageProbe {
             }
         }
 
-        // The whole prefix, not just Cellar: formulae also install real files
-        // into share/ and lib/, and casks live in Caskroom.
         for prefix in ["/opt/homebrew", "/usr/local"] {
             let url = URL(fileURLWithPath: prefix)
             guard url.appending(path: "bin/brew").exists else { continue }
+            let rawDetail = "\(prefix): every formula and cask installed with brew. Remove what you no longer use."
             if let item = await ProbeSupport.directoryItem(
                 id: "pkg-homebrew-\(prefix)", category: .packages, name: "Homebrew installation",
-                detail: "\(prefix): every formula and cask installed with brew. Remove what you no longer use.",
+                detail: rawDetail,
                 url: url, safety: .manual,
                 action: .manual("brew leaves            # formulae you asked for\nbrew list --cask\nbrew uninstall <formula>\nbrew uninstall --cask <name>\nbrew autoremove"),
-                minimumBytes: 100 * ProbeSupport.megabyte
+                minimumBytes: 100 * ProbeSupport.megabyte,
+                displayDetail: L("%@: every formula and cask installed with brew. Remove what you no longer use.", prefix)
             ) {
                 items.append(item)
             }
@@ -107,9 +91,6 @@ struct PackageProbe: StorageProbe {
         return items.sorted { ($0.sizeBytes ?? 0) > ($1.sizeBytes ?? 0) }
     }
 
-    /// pnpm's default store directories, in the order pnpm itself prefers them.
-    /// Only consulted when the command is not on the search path; an installed
-    /// pnpm is always asked, because the store can be configured anywhere.
     static var defaultPnpmStore: URL? {
         [URL.home("Library/pnpm/store"), URL.home(".local/share/pnpm/store"), URL.home(".pnpm-store")]
             .first { $0.exists }
